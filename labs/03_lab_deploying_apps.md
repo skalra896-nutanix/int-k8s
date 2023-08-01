@@ -1,4 +1,4 @@
-# Lab: Declarative Kubernetes Resources
+# Lab: Deploying Apps in Kubernetes
 
 ## Overview
 In this Lab we will explore how the Kubernetes resources such as Deployments
