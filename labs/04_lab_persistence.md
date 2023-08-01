@@ -1,4 +1,4 @@
-# Lab: Deploying Apps in Kubernetes
+# Lab: Using Data Persistence
 
 ## Overview
 In this lab we will explore how the Kubernetes resources StorageClass,
@@ -57,7 +57,7 @@ Create a PVC manifest using the following YAML and apply it.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: static-files
+  name: html-files
 spec:
   accessModes:
     - ReadWriteOnce
@@ -67,14 +67,101 @@ spec:
 ```
 
 Note that we did not specify a StorageClass here, so the default is used.
+You may see the PVC status as "Pending." This is because the StorageClass
+defines the property `VolumeBindingMode: WaitForFirstConsumer`, which means
+it will not actually create a volume until a Pod attempts to use the PVC.
 
 ### Step 3: Create Pods to read the PVC
 
+#### Create a Deployment manifest
 
-### Step 4: Create Pods to write to the PVC
+Using what you've learned and the documentation, create a Deployment manifest
+with the following criteria:
+
+* Replica count: 2
+* Image: nginx
+* Pod Spec mounts the PVC as a volume using the YAML snippets below
+
+```yaml
+# Container Volume Mount
+volumeMounts:
+  - mountPath: "/usr/share/nginx/html"
+    name: html-files
+```
+
+```yaml
+# Pod Volume definition
+volumes:
+  - name: html-files
+    persistentVolumeClaim:
+      claimName: html-files
+      readOnly: true
+```
+
+#### Apply and test the Deployment
+
+Apply your Deployment manifest, and inspect it and the Pods it creates using
+`kubectl`. You should see your Pods have a Mount defined with the read-only
+flag (ro) and the path your specified, and your PVC should now show a status
+of "BOUND" (Note this may take up to a minute). Additionally, you should be
+able to use `kubectl get pv` to see the volume that was created and get
+additional information about it.
+
+Create and apply a Service manifest with a selector that matches your
+Deployment Pods' labels and make a request to the service. You should see
+the default nginx "Welcome" message.
 
 
-### Step 5: Cleanup
+### Step 4: Create a Pod to write to the PVC
+
+#### Create a one-off Pod manifest
+
+Using the YAML below, create a Pod manifest and apply it. Note the differences
+from previous Pods - here we have set the restartPolicy to "Never" because
+we only want the Pod to execute a single command and quit. This Pod will also
+mount our same PVC, but in read-write access mode by default.
+
+```yaml
+kind: Pod
+apiVersion: v1
+metadata:
+  name: html-downloader
+spec:
+  containers:
+    - name: busybox
+      image: busybox
+      workingDir: "/data"
+      command: ["wget"]
+      args: 
+        - "https://github.com/jrrickerson/int-k8s/blob/main/web/index.html"
+        - "-O"
+        - "index.html"
+      volumeMounts:
+      - mountPath: "/data"
+        name: html-files
+  volumes:
+    - name: html-files
+      persistentVolumeClaim:
+        claimName: html-files
+```
+
+
+### Step 5: Test your new HTML file
+
+Once your "downloader" Pod has finished downloading (this should only take a
+couple of seconds), retry your requests to your Service. You should now see the
+contents of the `index.html` I provided for you, which was written to the PV
+by the downloader and read by the nginx Pods.
+
+You can try scaling up or down your Deployment to see that all the Pods
+continue to share the same data without having to copy it or redownload
+anything.
+
+### Step 6: Cleanup
+
+Using `kubectl`, delete your Deployment, one-off downloader Pod, and PVC
+resources. The PV will be automatically cleaned up once the PVC is deleted due
+to the ReclaimPolicy of `Delete` on the StorageClass.
 
 
 ## Bonus Task: Configure BasicAuth for nginx
